@@ -1,6 +1,5 @@
 name: Build releases
 
-
 on:
   watch:
     types: started
