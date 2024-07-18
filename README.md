@@ -22,45 +22,36 @@ sudo apt-get update
 sudo apt-get install -y build-essential flex bison g++ gawk gcc-multilib g++-multilib gettext git libfuse-dev libncurses5-dev libssl-dev python3 python3-pip python3-ply python3-distutils python3-pyelftools rsync unzip zlib1g-dev file wget subversion patch upx-ucl autoconf automake curl asciidoc binutils bzip2 lib32gcc-s1 libc6-dev-i386 uglifyjs msmtp texinfo libreadline-dev libglib2.0-dev xmlto libelf-dev libtool autopoint antlr3 gperf ccache swig coreutils haveged scons libpython3-dev jq
 ```
 
-##### 安装 clang-15 - 启用 BPF 支持时需要
-##### 一些过旧的发行版没有提供 clang-15，可以通过 llvm 官方提供源安装：https://apt.llvm.org
+##### 安装 [LLVM/CLANG](https://github.com/sbwml/redhat-llvm-project) - 启用 `ENABLE_BPF` / `KERNEL_CLANG_LTO` 时需要
+
 ```shell
-# debian 11
-sudo sh -c 'echo "deb http://apt.llvm.org/bullseye/ llvm-toolchain-bullseye-15 main" >> /etc/apt/sources.list'
-sudo sh -c 'echo "deb-src http://apt.llvm.org/bullseye/ llvm-toolchain-bullseye-15 main" >> /etc/apt/sources.list'
-wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-sudo apt-get update
-sudo apt-get install -y clang-15
+# 下载并解压
+sudo mkdir -p /opt/clang
+curl -LO https://github.com/sbwml/redhat-llvm-project/releases/download/18.1.8/clang-18.1.8-x86_64-redhat-linux.tar.xz
+sudo tar --strip-components=1 -C /opt/clang -xf clang-18.1.8-x86_64-redhat-linux.tar.xz
+rm -rf clang-18.1.8-x86_64-redhat-linux.tar.xz
 
-# ubuntu 20.04
-sudo sh -c 'echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" >> /etc/apt/sources.list'
-sudo sh -c 'echo "deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" >> /etc/apt/sources.list'
-wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-sudo apt-get update
-sudo apt-get install -y clang-15
+# 添加 BIN 到系统变量
+export PATH="/opt/clang/bin:$PATH"
 
-# debian 12 or latest & ubuntu 22 or latest
-sudo apt-get update
-sudo apt-get install -y clang-15
+# clang 版本验证
+clang --version
+
+ clang version 18.1.8 (https://github.com/llvm/llvm-project 3b5b5c1ec4a3095ab096dd780e84d7ab81f3d7ff)
+ Target: x86_64-redhat-linux-gnu
+ Thread model: posix
+ InstalledDir: /opt/clang/bin
 ```
 
 ---------------
 
 ### 启用 [Clang/LLVM](https://docs.kernel.org/kbuild/llvm.html) 构建内核
 ##### 脚本支持使用 Clang/LLVM 构建内核，NanoPi & X86_64 设备将同时启用 LLVM LTO 链接时优化，这会增加编译的时间，但会获得更优的性能
-##### 编译环境需要安装 Clang/LLVM 工具链，推荐使用 clang 16-18 版本
+##### 编译环境需要安装 Clang/LLVM 工具链，推荐使用 clang 16~18 版本
 ##### 只需在构建固件前执行以下命令即可启用 Clang/LLVM 构建内核与内核模块
 
 ```
 export KERNEL_CLANG_LTO=y
-```
-
-### 启用 [glibc](https://www.gnu.org/software/libc/) （实验性）
-##### 脚本支持使用 glibc 库进行构建，当启用 glibc 进行构建时，构建的固件将会同时兼容 musl/glibc 的预构建二进制程序
-##### 只需在构建固件前执行以下命令即可启用 glibc 构建
-
-```
-export USE_GLIBC=y
 ```
 
 ### 启用 [GCC13](https://gcc.gnu.org/gcc-13/)/[GCC14](https://gcc.gnu.org/gcc-14/)/[GCC15](https://gcc.gnu.org/gcc-15/) 工具链编译
@@ -92,7 +83,7 @@ export ENABLE_LTO=y
 ##### 只需在构建固件前执行以下命令即可启用 MOLD 链接，如果使用它建议同时启用 LTO 优化
 
 ```
-export USE_MOLD=y
+export ENABLE_MOLD=y
 ```
 
 ### 启用 [eBPF](https://docs.kernel.org/bpf/) 支持
@@ -109,8 +100,33 @@ export ENABLE_BPF=y
 export ENABLE_LRNG=y
 ```
 
+### 启用 [Glibc](https://www.gnu.org/software/libc/) 库构建 （实验性）
+##### 启用 glibc 库进行构建时，构建的固件将会同时兼容 musl/glibc 的预构建二进制程序，但缺失 `opkg install` 安装源支持
+##### 只需在构建固件前执行以下命令即可启用 glibc 构建
+
+```
+export ENABLE_GLIBC=y
+```
+
+### 启用本地 Kernel Modules 安装源 （For developers）
+##### 启用该标志时，将会拷贝全部 target packages 到 rootfs 并替换 openwrt_core 源为本地方式，以供离线 `opkg install kmod-xxx` 安装操作
+##### 这会增加固件文件大小（大约 70MB），对项目内核版本、模块、补丁 有修改的需求时，该功能可能会有用
+##### 只需在构建固件前执行以下命令即可启用本地 Kernel Modules 安装源
+
+```
+export ENABLE_LOCAL_KMOD=y
+```
+
+### 启用 [DPDK](https://www.dpdk.org/) 支持
+##### DPDK（Data Plane Development Kit）是一个开源工具集，专为加速数据包处理而设计，通过优化的数据平面技术，实现高性能、低延迟的网络应用
+##### 只需在构建固件前执行以下命令即可启用 DPDK 工具集支持
+
+```
+export ENABLE_DPDK=y
+```
+
 ### 快速构建（仅限 Github Actions）
-##### 脚本会使用 [toolchain](https://github.com/sbwml/toolchain-cache) 缓存代替源码构建，与常规构建相比能节省大约 60 分钟的编译耗时，仅适用于 Github Actions `ubuntu-22.04` 环境
+##### 脚本会使用 [toolchain](https://github.com/sbwml/toolchain-cache) 缓存代替源码构建，与常规构建相比能节省大约 60 分钟的编译耗时，仅适用于 Github Actions `ubuntu-24.04` 环境
 ##### 只需在构建固件前执行以下命令即可启用快速构建
 
 ```
@@ -224,4 +240,11 @@ bash <(curl -sS https://raw.githubusercontent.com/你的用户名/r4s_build_scri
 
 ### 一、Fork 本仓库到自己 GitHub 存储库
 
-### 二、点击仓库右上角的 ⭐Star 既可触发构建
+### 二、构建固件
+- 在存储库名称下，单击（<img src="https://camo.githubusercontent.com/392391d290482f9c4881912eec0700ec2acef8e0d5d2e24b3f8b23d9354fa73e/68747470733a2f2f66696c652e636f6f6c75632e636f6d2f323232322e737667" alt="Actions"> Actions）。
+  
+- 在左侧边栏中，单击要运行的工作流的名称：**Build releases**。
+  
+- 在工作流运行的列表上方，单击“**Run workflow**”按钮，选择要构建的设备固件并运行工作流。
+  
+  ![image](https://github.com/sbwml/r4s_build_script/assets/16485166/136abcd1-ecf3-4e6d-aa1a-5393a75a25cc)

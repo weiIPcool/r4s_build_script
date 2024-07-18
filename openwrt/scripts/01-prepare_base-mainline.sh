@@ -8,7 +8,6 @@ git clone https://nanopi:nanopi@$gitea/sbwml/target_linux_rockchip-6.x target/li
 
 # x86_64 - target
 curl -s https://$mirror/openwrt/patch/openwrt-6.x/x86/64/config-6.6 > target/linux/x86/64/config-6.6
-[ "$platform" = "x86_64" ] && echo "CONFIG_PREEMPT_DYNAMIC=y" >> target/linux/x86/64/config-6.6
 curl -s https://$mirror/openwrt/patch/openwrt-6.x/x86/config-6.6 > target/linux/x86/config-6.6
 mkdir -p target/linux/x86/patches-6.6
 curl -s https://$mirror/openwrt/patch/openwrt-6.x/x86/patches-6.6/100-fix_cs5535_clockevt.patch > target/linux/x86/patches-6.6/100-fix_cs5535_clockevt.patch
@@ -23,6 +22,10 @@ git clone https://nanopi:nanopi@$gitea/sbwml/target_linux_bcm53xx target/linux/b
 git clone https://nanopi:nanopi@$gitea/sbwml/brcmfmac-firmware-4366c-pcie package/firmware/brcmfmac-firmware-4366c-pcie
 git clone https://nanopi:nanopi@$gitea/sbwml/brcmfmac-firmware-4366b-pcie package/firmware/brcmfmac-firmware-4366b-pcie
 
+# armsr/armv8
+rm -rf target/linux/armsr
+git clone https://nanopi:nanopi@$gitea/sbwml/target_linux_armsr target/linux/armsr
+
 # kernel - 6.x
 curl -s https://$mirror/tags/kernel-6.6 > include/kernel-6.6
 
@@ -32,23 +35,22 @@ grep HASH include/kernel-6.6 | awk -F'HASH-' '{print $2}' | awk '{print $1}' | m
 
 # kernel generic patches
 rm -rf target/linux/generic
-git clone https://$github/sbwml/target_linux_generic -b main target/linux/generic
+kernel_version=$(sed -n 's/^LINUX_KERNEL_HASH-\([0-9.]\+\) = .*/\1/p' include/kernel-6.6)
+release_kernel_version=$(curl -sL https://raw.githubusercontent.com/sbwml/r4s_build_script/master/tags/kernel-6.6 | sed -n 's/^LINUX_KERNEL_HASH-\([0-9.]\+\) = .*/\1/p')
+if [ "$kernel_version" = "$release_kernel_version" ]; then
+    git clone https://$github/sbwml/target_linux_generic -b main target/linux/generic --depth=1
+else
+    if [ "$(whoami)" = "runner" ]; then
+        git_name=private
+        git_password="$git_password"
+        git clone https://"$git_name":"$git_password"@$gitea/sbwml/target_linux_generic -b main target/linux/generic --depth=1
+    elif [ "$(whoami)" = "sbwml" ]; then
+        git clone https://$gitea/sbwml/target_linux_generic -b main target/linux/generic --depth=1
+    fi
+fi
 
 # bcm53xx - fix build kernel with clang
 [ "$platform" = "bcm53xx" ] && [ "$KERNEL_CLANG_LTO" = "y" ] && rm -f target/linux/generic/hack-6.6/220-arm-gc_sections.patch
-
-# kernel - clang lto
-if [ "$KERNEL_CLANG_LTO" = "y" ]; then
-    echo 'CONFIG_LTO=y' >> target/linux/generic/config-6.6
-    echo 'CONFIG_LTO_CLANG=y' >> target/linux/generic/config-6.6
-    echo 'CONFIG_LTO_CLANG_FULL=y' >> target/linux/generic/config-6.6
-    echo 'CONFIG_HAS_LTO_CLANG=y' >> target/linux/generic/config-6.6
-    echo 'CONFIG_RANDSTRUCT_NONE=y' >> target/linux/generic/config-6.6
-    echo '# CONFIG_CFI_CLANG is not set' >> target/linux/generic/config-6.6
-    echo '# CONFIG_LTO_NONE is not set' >> target/linux/generic/config-6.6
-    echo '# CONFIG_RANDSTRUCT_FULL is not set' >> target/linux/generic/config-6.6
-    echo '# CONFIG_RELR is not set' >> target/linux/generic/config-6.6
-fi
 
 # kernel modules
 rm -rf package/kernel/linux
@@ -110,56 +112,48 @@ if [ "$platform" != "bcm53xx" ]; then
 fi
 
 # LRNG v54 - linux-6.6
-if [ "$ENABLE_LRNG" = "y" ]; then
-    curl -s https://$mirror/openwrt/patch/kernel-6.6/config-lrng >> target/linux/generic/config-6.6
-    if [ "$platform" = "rk3399" ] || [ "$platform" = "rk3568" ]; then
-        echo 'CONFIG_LRNG_HWRAND_IF=y' >> target/linux/generic/config-6.6
-    else
-        echo '# CONFIG_LRNG_HWRAND_IF is not set' >> target/linux/generic/config-6.6
-    fi
-    pushd target/linux/generic/hack-6.6
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0001-LRNG-Entropy-Source-and-DRNG-Manager.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0002-LRNG-allocate-one-DRNG-instance-per-NUMA-node.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0003-LRNG-proc-interface.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0004-LRNG-add-switchable-DRNG-support.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0005-LRNG-add-common-generic-hash-support.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0006-crypto-DRBG-externalize-DRBG-functions-for-LRNG.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0007-LRNG-add-SP800-90A-DRBG-extension.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0008-LRNG-add-kernel-crypto-API-PRNG-extension.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0009-LRNG-add-atomic-DRNG-implementation.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0010-LRNG-add-common-timer-based-entropy-source-code.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0011-LRNG-add-interrupt-entropy-source.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0012-scheduler-add-entropy-sampling-hook.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0013-LRNG-add-scheduler-based-entropy-source.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0014-LRNG-add-SP800-90B-compliant-health-tests.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0015-LRNG-add-random.c-entropy-source-support.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0016-LRNG-CPU-entropy-source.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0017-LRNG-add-Jitter-RNG-fast-noise-source.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0018-LRNG-add-option-to-enable-runtime-entropy-rate-confi.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0019-LRNG-add-interface-for-gathering-of-raw-entropy.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0020-LRNG-add-power-on-and-runtime-self-tests.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0021-LRNG-sysctls-and-proc-interface.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0022-LRMG-add-drop-in-replacement-random-4-API.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0023-LRNG-add-kernel-crypto-API-interface.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0024-LRNG-add-dev-lrng-device-file-support.patch
-        curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0025-LRNG-add-hwrand-framework-interface.patch
-    popd
-fi
+pushd target/linux/generic/hack-6.6
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0001-LRNG-Entropy-Source-and-DRNG-Manager.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0002-LRNG-allocate-one-DRNG-instance-per-NUMA-node.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0003-LRNG-proc-interface.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0004-LRNG-add-switchable-DRNG-support.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0005-LRNG-add-common-generic-hash-support.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0006-crypto-DRBG-externalize-DRBG-functions-for-LRNG.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0007-LRNG-add-SP800-90A-DRBG-extension.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0008-LRNG-add-kernel-crypto-API-PRNG-extension.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0009-LRNG-add-atomic-DRNG-implementation.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0010-LRNG-add-common-timer-based-entropy-source-code.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0011-LRNG-add-interrupt-entropy-source.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0012-scheduler-add-entropy-sampling-hook.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0013-LRNG-add-scheduler-based-entropy-source.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0014-LRNG-add-SP800-90B-compliant-health-tests.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0015-LRNG-add-random.c-entropy-source-support.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0016-LRNG-CPU-entropy-source.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0017-LRNG-add-Jitter-RNG-fast-noise-source.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0018-LRNG-add-option-to-enable-runtime-entropy-rate-confi.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0019-LRNG-add-interface-for-gathering-of-raw-entropy.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0020-LRNG-add-power-on-and-runtime-self-tests.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0021-LRNG-sysctls-and-proc-interface.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0022-LRMG-add-drop-in-replacement-random-4-API.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0023-LRNG-add-kernel-crypto-API-interface.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0024-LRNG-add-dev-lrng-device-file-support.patch
+    curl -Os https://$mirror/openwrt/patch/kernel-6.6/lrng/011-LRNG-0025-LRNG-add-hwrand-framework-interface.patch
+popd
 
 # linux-firmware: rtw89 / rtl8723d / rtl8821c /i915 firmware
 rm -rf package/firmware/linux-firmware
 git clone https://$github/sbwml/package_firmware_linux-firmware package/firmware/linux-firmware
 
-# rtl8812au-ct - fix linux-6.1
+# rtl8812au-ct - fix linux-6.6
 rm -rf package/kernel/rtl8812au-ct
-cp -a ../master/openwrt/package/kernel/rtl8812au-ct package/kernel/rtl8812au-ct
+git clone https://$github/sbwml/package_kernel_rtl8812au-ct package/kernel/rtl8812au-ct
 
 # add rtl8812au-ac
 git clone https://$github/sbwml/package_kernel_rtl8812au-ac package/kernel/rtl8812au-ac
 
-# mt76 - main
-rm -rf package/kernel/mt76
-cp -a ../master/openwrt/package/kernel/mt76 package/kernel/mt76
+# mt76 - 2024-05-17
+rm -rf package/kernel/mt76/patches
+curl -s https://$mirror/openwrt/patch/mt76/Makefile > package/kernel/mt76/Makefile
 
 # iwinfo: add mt7922 device id
 mkdir -p package/network/utils/iwinfo/patches
@@ -175,7 +169,7 @@ curl -s https://$mirror/openwrt/patch/openwrt-6.x/500-world-regd-5GHz.patch > pa
 
 # mac80211 - fix linux 6.6 & add rtw89
 rm -rf package/kernel/mac80211
-git clone https://$github/sbwml/package_kernel_mac80211 package/kernel/mac80211
+git clone https://$github/sbwml/package_kernel_mac80211 package/kernel/mac80211 -b v6.6.15
 
 # mac80211/patches/rtl - rtw88
 mkdir -p package/kernel/mac80211/patches/rtl
@@ -217,4 +211,11 @@ cp -a ../master/openwrt/package/kernel/ubnt-ledbar package/kernel/ubnt-ledbar
 if [ "$platform" = "rk3399" ] || [ "$platform" = "rk3568" ]; then
     curl -s https://$mirror/openwrt/patch/rtc/sysfixtime > package/base-files/files/etc/init.d/sysfixtime
     chmod 755 package/base-files/files/etc/init.d/sysfixtime
+fi
+
+# emmc-install
+if [ "$platform" = "rk3568" ]; then
+    mkdir -p files/sbin
+    curl -so files/sbin/emmc-install https://$mirror/openwrt/files/sbin/emmc-install
+    chmod 755 files/sbin/emmc-install
 fi

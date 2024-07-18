@@ -28,6 +28,11 @@ git clone https://$github/sbwml/packages_utils_lrzsz package/new/lrzsz
 # irqbalance - openwrt master
 rm -rf feeds/packages/utils/irqbalance
 cp -a ../master/packages/utils/irqbalance feeds/packages/utils/irqbalance
+# irqbalance: disable build with numa
+if [ "$ENABLE_DPDK" = "y" ]; then
+    curl -s https://$mirror/openwrt/patch/irqbalance/011-meson-numa.patch > feeds/packages/utils/irqbalance/patches/011-meson-numa.patch
+    sed -i '/-Dcapng=disabled/i\\t-Dnuma=disabled \\' feeds/packages/utils/irqbalance/Makefile
+fi
 
 # FRPC
 rm -rf feeds/packages/net/frp
@@ -43,10 +48,6 @@ sed -i "/conf_inc:list/a\\\t\t\'enable:bool:0\'" feeds/packages/net/frp/files/fr
 sed -i '/procd_open_instance/i\\t\[ "$enable" -ne 1 \] \&\& return 1\n' feeds/packages/net/frp/files/frpc.init
 curl -s https://$mirror/openwrt/patch/luci/applications/001-luci-app-frpc-hide-token.patch | patch -p1
 curl -s https://$mirror/openwrt/patch/luci/applications/002-luci-app-frpc-add-enable-flag.patch | patch -p1
-
-# haproxy - bump version
-rm -rf feeds/packages/net/haproxy
-cp -a ../master/packages/net/haproxy feeds/packages/net/haproxy
 
 # samba4 - bump version
 rm -rf feeds/packages/net/samba4
@@ -95,7 +96,6 @@ git clone https://$github/sbwml/openwrt_helloworld package/new/helloworld -b v5
 
 # DAED
 git clone https://$github/sbwml/luci-app-daed package/new/daed
-git clone https://$github/sbwml/luci-app-daed-next package/new/daed-next
 
 # immortalwrt homeproxy
 git clone https://$github/immortalwrt/homeproxy package/new/homeproxy
@@ -144,11 +144,13 @@ sed -i 's/services/network/g' feeds/luci/applications/luci-app-nlbwmon/htdocs/lu
 # custom packages
 rm -rf feeds/packages/utils/coremark
 git clone https://$github/sbwml/openwrt_pkgs package/new/custom --depth=1
-# coremark - prebuilt with gcc14
+# coremark - prebuilt with gcc15
 if [ "$platform" = "rk3568" ]; then
     curl -s https://$mirror/openwrt/patch/coremark/coremark.aarch64-4-threads > package/new/custom/coremark/src/musl/coremark.aarch64
 elif [ "$platform" = "rk3399" ]; then
     curl -s https://$mirror/openwrt/patch/coremark/coremark.aarch64-6-threads > package/new/custom/coremark/src/musl/coremark.aarch64
+elif [ "$platform" = "armv8" ]; then
+    curl -s https://$mirror/openwrt/patch/coremark/coremark.aarch64-16-threads > package/new/custom/coremark/src/musl/coremark.aarch64
 fi
 
 # luci-compat - fix translation
@@ -164,9 +166,6 @@ sed -i 's,frp 客户端,FRP 客户端,g' feeds/luci/applications/luci-app-frpc/p
 mkdir -p feeds/packages/net/sqm-scripts/patches
 curl -s https://$mirror/openwrt/patch/sqm/001-help-translation.patch > feeds/packages/net/sqm-scripts/patches/001-help-translation.patch
 
-# SQM - luci menu order
-# sed -i "s/59/150/g" feeds/luci/applications/luci-app-sqm/root/usr/share/luci/menu.d/luci-app-sqm.json
-
 # mjpg-streamer init
 sed -i "s,option port '8080',option port '1024',g" feeds/packages/multimedia/mjpg-streamer/files/mjpg-streamer.config
 sed -i "s,option fps '5',option fps '25',g" feeds/packages/multimedia/mjpg-streamer/files/mjpg-streamer.config
@@ -178,3 +177,6 @@ git clone https://$github/sbwml/luci-app-mjpg-streamer feeds/luci/applications/l
 # unzip
 rm -rf feeds/packages/utils/unzip
 git clone https://$github/sbwml/feeds_packages_utils_unzip feeds/packages/utils/unzip
+
+# tcp-brutal
+git clone https://$github/sbwml/package_kernel_tcp-brutal package/kernel/tcp-brutal

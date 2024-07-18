@@ -55,7 +55,7 @@ index f5db99f..24c6535 100644
  endif
  
 +ifeq ($(PKG_VERSION),15.0.0)
-+  PKG_HASH:=5f27302fe293875ea6c80e17b681feb04d19e48889d5256899dbec1cfbbc5c41
++  PKG_HASH:=ece90dcb6d14aa1db2b931aaef474b557df4924c54995e37827fe18528efe27b
 +endif
 +
  PATCH_DIR=../patches-$(GCC_MAJOR_VERSION).x

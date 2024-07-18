@@ -1246,6 +1246,18 @@ endef
 $(eval $(call KernelPackage,sctp))
 
 
+define KernelPackage/sctp-diag
+  SUBMENU:=$(NETWORK_SUPPORT_MENU)
+  TITLE:=SCTP diag support
+  DEPENDS:=+kmod-sctp +kmod-inet-diag
+  KCONFIG:=CONFIG_INET_SCTP_DIAG
+  FILES:= $(LINUX_DIR)/net/sctp/sctp_diag.ko
+  AUTOLOAD:= $(call AutoLoad,33,sctp_diag)
+endef
+
+$(eval $(call KernelPackage,sctp-diag))
+
+
 define KernelPackage/netem
   SUBMENU:=$(NETWORK_SUPPORT_MENU)
   TITLE:=Network emulation functionality
@@ -1298,13 +1310,20 @@ define KernelPackage/rxrpc
   HIDDEN:=1
   KCONFIG:= \
 	CONFIG_AF_RXRPC \
-	CONFIG_RXKAD=m \
+	CONFIG_AF_RXRPC_IPV6=y \
+	CONFIG_RXKAD \
 	CONFIG_AF_RXRPC_DEBUG=n
   FILES:= \
 	$(LINUX_DIR)/net/rxrpc/rxrpc.ko
-  AUTOLOAD:=$(call AutoLoad,30,rxrpc.ko)
-  DEPENDS:= +kmod-crypto-manager +kmod-crypto-pcbc +kmod-crypto-fcrypt \
-    +kmod-udptunnel4 +kmod-udptunnel6
+  AUTOLOAD:=$(call AutoLoad,30,rxrpc)
+  DEPENDS:= \
+	+kmod-crypto-fcrypt \
+	+kmod-crypto-hmac \
+	+kmod-crypto-manager \
+	+kmod-crypto-md5 \
+	+kmod-crypto-pcbc \
+	+kmod-udptunnel4 \
+	+IPV6:kmod-udptunnel6
 endef
 
 define KernelPackage/rxrpc/description
@@ -1570,7 +1589,7 @@ $(eval $(call KernelPackage,qrtr-tun))
 define KernelPackage/qrtr-smd
   SUBMENU:=$(NETWORK_SUPPORT_MENU)
   TITLE:=SMD IPC Router channels
-  DEPENDS:=+kmod-qrtr @TARGET_ipq807x
+  DEPENDS:=+kmod-qrtr @TARGET_qualcommax
   KCONFIG:=CONFIG_QRTR_SMD
   FILES:= $(LINUX_DIR)/net/qrtr/qrtr-smd.ko
   AUTOLOAD:=$(call AutoProbe,qrtr-smd)

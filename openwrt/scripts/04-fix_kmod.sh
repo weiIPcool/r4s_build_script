@@ -60,7 +60,6 @@ popd
 # xtables-addons
 rm -rf feeds/packages/net/xtables-addons
 cp -a ../master/packages/net/xtables-addons feeds/packages/net/xtables-addons
-curl -s https://$mirror/openwrt/patch/packages-patches/xtables-addons/202-fix-lua-packetscript-for-linux-6.6.patch > feeds/packages/net/xtables-addons/patches/202-fix-lua-packetscript-for-linux-6.6.patch
 
 # telephony
 pushd feeds/telephony
@@ -95,8 +94,4 @@ if [ "$KERNEL_CLANG_LTO" = "y" ]; then
     # coova-chilli module
     rm -rf feeds/packages/net/coova-chilli
     git clone https://$github/sbwml/kmod_packages_net_coova-chilli feeds/packages/net/coova-chilli
-    # rtl8812au-ac & rtl8812au-ct
-    rm -rf package/kernel/rtl8812au-ac package/kernel/rtl8812au-ct
-    git clone https://$gitea/sbwml/package_kernel_rtl8812au-ac package/kernel/rtl8812au-ac
-    git clone https://$gitea/sbwml/package_kernel_rtl8812au-ct package/kernel/rtl8812au-ct
 fi

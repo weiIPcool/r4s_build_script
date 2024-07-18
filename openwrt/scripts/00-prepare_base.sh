@@ -14,6 +14,11 @@ fi
 # config/Config-kernel.in patch
 curl -s https://$mirror/openwrt/patch/generic/0001-kernel-add-MODULE_ALLOW_BTF_MISMATCH-option.patch | patch -p1
 
+# tools: add upx tools
+mkdir -p tools/upx
+curl -s https://$mirror/openwrt/patch/upx/Makefile > tools/upx/Makefile
+sed -i "/tools-y += sstrip/atools-y += upx" tools/Makefile
+
 # rootfs: upx compression
 # include/rootfs.mk
 curl -s https://$mirror/openwrt/patch/generic/0002-rootfs-add-upx-compression-support.patch | patch -p1
@@ -21,19 +26,28 @@ curl -s https://$mirror/openwrt/patch/generic/0002-rootfs-add-upx-compression-su
 # kernel: Add support for llvm/clang compiler
 curl -s https://$mirror/openwrt/patch/generic/0003-kernel-Add-support-for-llvm-clang-compiler.patch | patch -p1
 
+# toolchain: Add libquadmath to the toolchain
+curl -s https://$mirror/openwrt/patch/generic/0004-libquadmath-Add-libquadmath-to-the-toolchain.patch | patch -p1
+
+# rootfs: add r/w (0600) permissions for UCI configuration files
+# include/rootfs.mk
+curl -s https://$mirror/openwrt/patch/generic/0005-rootfs-add-r-w-permissions-for-UCI-configuration-fil.patch | patch -p1
+
+# build: kernel: add out-of-tree kernel config
+curl -s https://$mirror/openwrt/patch/generic/0006-build-kernel-add-out-of-tree-kernel-config.patch | patch -p1
+
+# rootfs: Add support for local kmod installation sources
+curl -s https://$mirror/openwrt/patch/generic/0007-rootfs-Add-support-for-local-kmod-installation-sourc.patch | patch -p1
+
 # meson: add platform variable to cross-compilation file
 curl -s https://$mirror/openwrt/patch/generic/010-meson-add-platform-variable-to-cross-compilation-file.patch | patch -p1
 
-# Fix x86 - CONFIG_ALL_KMODS
-if [ "$platform" = "x86_64" ]; then
-    sed -i 's/hwmon, +PACKAGE_kmod-thermal:kmod-thermal/hwmon/g' package/kernel/linux/modules/hwmon.mk
-fi
+# dwarves: Fix a dwarf type DW_ATE_unsigned_1024 to btf encoding issue
+mkdir -p tools/dwarves/patches
+curl -s https://$mirror/openwrt/patch/openwrt-6.x/dwarves/100-btf_encoder-Fix-a-dwarf-type-DW_ATE_unsigned_1024-to-btf-encoding-issue.patch > tools/dwarves/patches/100-btf_encoder-Fix-a-dwarf-type-DW_ATE_unsigned_1024-to-btf-encoding-issue.patch
 
-# x86 - disable intel_pstate
-sed -i 's/noinitrd/noinitrd intel_pstate=disable/g' target/linux/x86/image/grub-efi.cfg
-
-# x86 - disable mitigations
-sed -i 's/intel_pstate=disable/intel_pstate=disable mitigations=off/g' target/linux/x86/image/grub-efi.cfg
+# x86 - disable intel_pstate & mitigations
+sed -i 's/noinitrd/noinitrd intel_pstate=disable mitigations=off/g' target/linux/x86/image/grub-efi.cfg
 
 # default LAN IP
 sed -i "s/192.168.1.1/$LAN/g" package/base-files/files/bin/config_generate
@@ -59,15 +73,17 @@ git clone https://$github/sbwml/package_kernel_r8101 package/kernel/r8101
 git clone https://$github/sbwml/package_kernel_r8125 package/kernel/r8125
 git clone https://$github/sbwml/package_kernel_r8126 package/kernel/r8126
 
-# Optimization level -Ofast
+# GCC Optimization level -O3
 if [ "$platform" = "x86_64" ]; then
     curl -s https://$mirror/openwrt/patch/target-modify_for_x86_64.patch | patch -p1
+elif [ "$platform" = "armv8" ]; then
+    curl -s https://$mirror/openwrt/patch/target-modify_for_armsr.patch | patch -p1
 else
     curl -s https://$mirror/openwrt/patch/target-modify_for_rockchip.patch | patch -p1
 fi
 
 # IF USE GLIBC
-if [ "$USE_GLIBC" = "y" ]; then
+if [ "$ENABLE_GLIBC" = "y" ]; then
     # musl-libc
     git clone https://$gitea/sbwml/package_libs_musl-libc package/libs/musl-libc
     # bump fstools version
@@ -86,8 +102,18 @@ if [ "$USE_GLIBC" = "y" ]; then
     sed -i "/disable-profile/d" toolchain/glibc/common.mk
 fi
 
+# DPDK & NUMACTL
+if [ "$ENABLE_DPDK" = "y" ]; then
+    mkdir -p package/new/{dpdk/patches,numactl}
+    curl -s https://$mirror/openwrt/patch/dpdk/dpdk/Makefile > package/new/dpdk/Makefile
+    curl -s https://$mirror/openwrt/patch/dpdk/dpdk/Config.in > package/new/dpdk/Config.in
+    curl -s https://$mirror/openwrt/patch/dpdk/dpdk/patches/010-dpdk_arm_build_platform_fix.patch > package/new/dpdk/patches/010-dpdk_arm_build_platform_fix.patch
+    curl -s https://$mirror/openwrt/patch/dpdk/dpdk/patches/201-r8125-add-r8125-ethernet-poll-mode-driver.patch > package/new/dpdk/patches/201-r8125-add-r8125-ethernet-poll-mode-driver.patch
+    curl -s https://$mirror/openwrt/patch/dpdk/numactl/Makefile > package/new/numactl/Makefile
+fi
+
 # mold
-if [ "$USE_MOLD" = "y" ]; then
+if [ "$ENABLE_MOLD" = "y" ]; then
     curl -s https://$mirror/openwrt/patch/openwrt-6.x/mold/0001-build-add-support-to-use-the-mold-linker-for-package.patch | patch -p1
     curl -s https://$mirror/openwrt/patch/openwrt-6.x/mold/0002-treewide-opt-out-of-tree-wide-mold-usage.patch | patch -p1
     curl -s https://$mirror/openwrt/patch/openwrt-6.x/mold/0003-toolchain-add-mold-as-additional-linker.patch | patch -p1
@@ -113,14 +139,14 @@ curl -s https://$mirror/openwrt/patch/util-linux/util-linux_ntfs3.patch > packag
 
 # fstools - enable any device with non-MTD rootfs_data volume
 curl -s https://$mirror/openwrt/patch/fstools/block-mount-add-fstools-depends.patch | patch -p1
-if [ "$USE_GLIBC" = "y" ]; then
+if [ "$ENABLE_GLIBC" = "y" ]; then
     curl -s https://$mirror/openwrt/patch/fstools/fstools-set-ntfs3-utf8-new.patch > package/system/fstools/patches/ntfs3-utf8.patch
     curl -s https://$mirror/openwrt/patch/fstools/glibc/0001-libblkid-tiny-add-support-for-XFS-superblock.patch > package/system/fstools/patches/0001-libblkid-tiny-add-support-for-XFS-superblock.patch
     curl -s https://$mirror/openwrt/patch/fstools/glibc/0003-block-add-xfsck-support.patch > package/system/fstools/patches/0003-block-add-xfsck-support.patch
 else
     curl -s https://$mirror/openwrt/patch/fstools/fstools-set-ntfs3-utf8-new.patch > package/system/fstools/patches/ntfs3-utf8.patch
 fi
-if [ "$USE_GLIBC" = "y" ]; then
+if [ "$ENABLE_GLIBC" = "y" ]; then
     curl -s https://$mirror/openwrt/patch/fstools/22-fstools-support-extroot-for-non-MTD-rootfs_data-new-version.patch > package/system/fstools/patches/22-fstools-support-extroot-for-non-MTD-rootfs_data.patch
 else
     curl -s https://$mirror/openwrt/patch/fstools/22-fstools-support-extroot-for-non-MTD-rootfs_data.patch > package/system/fstools/patches/22-fstools-support-extroot-for-non-MTD-rootfs_data.patch
@@ -181,6 +207,10 @@ pushd feeds/luci
 popd
 
 # openssl - quictls
+if [ "$version" = "rc2" ]; then
+    rm -rf package/libs/openssl
+    cp -a ../master/openwrt-23.05/package/libs/openssl package/libs/openssl
+fi
 pushd package/libs/openssl/patches
     curl -sO https://$mirror/openwrt/patch/openssl/quic/0001-QUIC-Add-support-for-BoringSSL-QUIC-APIs.patch
     curl -sO https://$mirror/openwrt/patch/openssl/quic/0002-QUIC-New-method-to-get-QUIC-secret-length.patch
@@ -255,25 +285,22 @@ git clone https://$github/sbwml/package_libs_ngtcp2 package/libs/ngtcp2
 rm -rf feeds/packages/net/curl
 git clone https://$github/sbwml/feeds_packages_net_curl feeds/packages/net/curl
 
-# wget - SmartDrive user-agent
-mkdir -p feeds/packages/net/wget/patches
-curl -s https://$mirror/openwrt/patch/user-agent/999-wget-default-useragent.patch > feeds/packages/net/wget/patches/999-wget-default-useragent.patch
-
 # Docker
 rm -rf feeds/luci/applications/luci-app-dockerman
 git clone https://$gitea/sbwml/luci-app-dockerman -b openwrt-23.05 feeds/luci/applications/luci-app-dockerman
 if [ "$version" = "snapshots-23.05" ] || [ "$version" = "rc2" ]; then
-    rm -rf feeds/packages/utils/docker feeds/packages/utils/dockerd feeds/packages/utils/docker-compose feeds/packages/utils/containerd feeds/packages/utils/runc
-    git clone https://$gitea/sbwml/packages_utils_docker feeds/packages/utils/docker
-    git clone https://$gitea/sbwml/packages_utils_dockerd feeds/packages/utils/dockerd
-    git clone https://$gitea/sbwml/packages_utils_containerd feeds/packages/utils/containerd
+    rm -rf feeds/packages/utils/{docker,dockerd,docker-compose,containerd,runc}
+    git clone https://$github/sbwml/packages_utils_docker feeds/packages/utils/docker
+    git clone https://$github/sbwml/packages_utils_dockerd feeds/packages/utils/dockerd
+    git clone https://$github/sbwml/packages_utils_containerd feeds/packages/utils/containerd
+    git clone https://$github/sbwml/packages_utils_runc feeds/packages/utils/runc
     cp -a ../master/packages/utils/docker-compose feeds/packages/utils/docker-compose
-    cp -a ../master/packages/utils/runc feeds/packages/utils/runc
 fi
 sed -i '/sysctl.d/d' feeds/packages/utils/dockerd/Makefile
 pushd feeds/packages
     curl -s https://$mirror/openwrt/patch/docker/0001-dockerd-fix-bridge-network.patch | patch -p1
     curl -s https://$mirror/openwrt/patch/docker/0002-docker-add-buildkit-experimental-support.patch | patch -p1
+    curl -s https://$mirror/openwrt/patch/docker/0003-dockerd-disable-ip6tables-for-bridge-network-by-defa.patch | patch -p1
 popd
 
 # cgroupfs-mount
@@ -299,13 +326,12 @@ sed -i 's/procd_set_param stderr 1/procd_set_param stderr 0/g' feeds/packages/ut
 
 # UPnP
 rm -rf feeds/packages/net/miniupnpd
-git clone https://$gitea/sbwml/miniupnpd feeds/packages/net/miniupnpd
+git clone https://$gitea/sbwml/miniupnpd feeds/packages/net/miniupnpd -b v2.3.6
 rm -rf feeds/luci/applications/luci-app-upnp
 git clone https://$gitea/sbwml/luci-app-upnp feeds/luci/applications/luci-app-upnp
 pushd feeds/packages
     curl -s https://$mirror/openwrt/patch/miniupnpd/01-set-presentation_url.patch | patch -p1
     curl -s https://$mirror/openwrt/patch/miniupnpd/02-force_forwarding.patch | patch -p1
-    curl -s https://$mirror/openwrt/patch/miniupnpd/03-Update-301-options-force_forwarding-support.patch.patch | patch -p1
     curl -s https://$mirror/openwrt/patch/miniupnpd/04-enable-force_forwarding-by-default.patch | patch -p1
 popd
 
@@ -320,7 +346,7 @@ popd
 
 # nginx - latest version
 rm -rf feeds/packages/net/nginx
-git clone https://$github/sbwml/feeds_packages_net_nginx feeds/packages/net/nginx -b quic
+git clone https://$github/sbwml/feeds_packages_net_nginx feeds/packages/net/nginx -b quic+zstd
 sed -i 's/procd_set_param stdout 1/procd_set_param stdout 0/g;s/procd_set_param stderr 1/procd_set_param stderr 0/g' feeds/packages/net/nginx/files/nginx.init
 
 # nginx - ubus
@@ -330,6 +356,14 @@ sed -i '/ubus_parallel_req/a\        ubus_script_timeout 600;' feeds/packages/ne
 # nginx - uwsgi timeout & enable brotli
 curl -s https://$mirror/openwrt/nginx/luci.locations > feeds/packages/net/nginx/files-luci-support/luci.locations
 curl -s https://$mirror/openwrt/nginx/uci.conf.template > feeds/packages/net/nginx-util/files/uci.conf.template
+
+# zstd - bump version
+rm -rf feeds/packages/utils/zstd
+cp -a ../master/packages/utils/zstd feeds/packages/utils/zstd
+
+# opkg
+mkdir -p package/system/opkg/patches
+curl -s https://$mirror/openwrt/patch/opkg/900-opkg-download-disable-hsts.patch > package/system/opkg/patches/900-opkg-download-disable-hsts.patch
 
 # uwsgi - bump version
 if [ "$version" = "snapshots-23.05" ] || [ "$version" = "rc2" ]; then
@@ -376,6 +410,13 @@ curl -s https://$mirror/openwrt/patch/luci/dhcp/dhcp.js > feeds/luci/modules/luc
 rm -rf package/network/services/ppp
 git clone https://$github/sbwml/package_network_services_ppp package/network/services/ppp
 
+# odhcpd RFC-9096
+mkdir -p package/network/services/odhcpd/patches
+curl -s https://$mirror/openwrt/patch/odhcpd/001-odhcpd-RFC-9096-compliance.patch > package/network/services/odhcpd/patches/001-odhcpd-RFC-9096-compliance.patch
+pushd feeds/luci
+    curl -s https://$mirror/openwrt/patch/odhcpd/luci-mod-network-add-option-for-ipv6-max-plt-vlt.patch | patch -p1
+popd
+
 # urngd - 2020-01-21
 rm -rf package/system/urngd
 git clone https://$github/sbwml/package_system_urngd package/system/urngd
@@ -399,6 +440,7 @@ curl -so files/root/.bashrc https://$mirror/openwrt/files/root/.bashrc
 # rootfs files
 mkdir -p files/etc/sysctl.d
 curl -so files/etc/sysctl.d/15-vm-swappiness.conf https://$mirror/openwrt/files/etc/sysctl.d/15-vm-swappiness.conf
+curl -so files/etc/sysctl.d/16-udp-buffer-size.conf https://$mirror/openwrt/files/etc/sysctl.d/16-udp-buffer-size.conf
 
 # NTP
 sed -i 's/0.openwrt.pool.ntp.org/ntp1.aliyun.com/g' package/base-files/files/bin/config_generate
